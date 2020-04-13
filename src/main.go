@@ -1,31 +1,26 @@
 package main
 import (
 	"fmt"
+	"flag"
 	"os"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-	//"strings"
 	"strconv"
 	"time"
 )
 
 func main() {
-
+	cur0Ptr := flag.String("cur0", "btc", "first and last currency")
+	feePtr := flag.Float64("fee", 0.02, "fee")
+	flag.Parse()
 	var curs [3]string
-
-	curs[0] = "btc"
-
+	curs[0] = *cur0Ptr
 	pairs := getPairsArray()
-
 	var money [4]float64
-
+	//var amount [4]float64
 	money[0] = 100
-
-	fee := 0.02
-
-	//i := 0
-
+	fee := *feePtr
 	// Поиск первой промежуточной валюты
 	for _, pair := range pairs {
 		if ((string(pair[len(pair)-3:len(pair)])) == curs[0]) {
@@ -40,7 +35,6 @@ func main() {
 							if (len(pair_3) > len(curs[2])) {
 								if pair_3[:len(curs[2])] == curs[2] {
 									if pair_3[len(curs[2])+1:len(pair_3)] == curs[0] {
-										fmt.Println("\n")
 										trans_1, err := getActiveOrders(curs[1] + "_" + curs[0], 1)
 										time.Sleep(700 * time.Millisecond)
 										trans_2, err := getActiveOrders(curs[1] + "_" + curs[2], 1)
@@ -86,88 +80,59 @@ type AB struct {
 }
 
 func getPairsArray() []string {
-
 	url := "https://yobit.net/api/3/info"
-
 	i := 0
-
 	resp, err := http.Get(url)
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	b, err := ioutil.ReadAll(resp.Body)
-
 	resp.Body.Close()
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	info := make(map[string]interface{})
-
 	err = json.Unmarshal(b, &info)
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	pairs := info["pairs"].(map[string]interface{})
-
 	k := make([]string, len(pairs))
-
 	for s, _ := range pairs {
 		k[i] = s
 		i++
 	}
-
 	return k
 }
 
 func getActiveOrders(pair string, limit int) (*AB, error) {
-
 	url := "https://yobit.net/api/3/depth/" + pair + "?limit=" + strconv.FormatInt(int64(limit), 10)
-
 	var ab AB
-
 	var result map[string]interface{}
-
 	resp, err := http.Get(url)
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	body, err := ioutil.ReadAll(resp.Body)
-
 	resp.Body.Close()
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	err = json.Unmarshal(body, &result)
-
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 	result = result[pair].(map[string]interface{})
-
 	b, err := json.Marshal(result)
-
 	if err != nil {
 		fmt.Println(err)
 	}
-
 	json.Unmarshal(b, &ab)
-
 	return &ab, err
 }
