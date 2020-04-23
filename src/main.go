@@ -12,25 +12,26 @@ import (
 
 func main() {
 	cur0Ptr := flag.String("cur0", "btc", "first and last currency")
-	feePtr := flag.Float64("fee", 0.02, "fee")
+	//amount0Ptr := flag.float("amount0", 100, "starting amount")
 	flag.Parse()
 	var curs [3]string
 	curs[0] = *cur0Ptr
-	pairs := getPairsArray()
-	var money [4]float64
-	//var amount [4]float64
-	money[0] = 100
-	fee := *feePtr
+	pairs, minAmount, fee := getPairsArrays()
+	var amount [4]float64
+	amount[0] = 100 //*amount0Ptr
+	index := [3]int{0, 0, 0}
 	// Поиск первой промежуточной валюты
 	for _, pair := range pairs {
-		if ((string(pair[len(pair)-3:len(pair)])) == curs[0]) {
+		if ((string(pair[len(pair)-len(curs[0]):len(pair)])) == curs[0]) {
 			curs[1] = pair[:len(pair)-4]
 			// Поиск второй промежуточной валюты
+			index[1] = 0
 			for _, pair_2 := range pairs {
 				if (len(pair_2) > len(curs[1])) {
 					if ((string(pair_2[:len(curs[1])])) == curs[1]) {
 						curs[2] = pair_2[len(curs[1])+1:len(pair_2)]
 						// Возвращение к первой валюте
+						index[2] = 0
 						for _, pair_3 := range pairs {
 							if (len(pair_3) > len(curs[2])) {
 								if pair_3[:len(curs[2])] == curs[2] {
@@ -43,21 +44,27 @@ func main() {
 										time.Sleep(700 * time.Millisecond)
 										if err == nil {
 											if len(trans_1.Asks) != 0 {
-												money[0] = money[0] - ((money[0] / 100) * fee)
-												money[1] = money[0] / trans_1.Asks[0][0]
 												if len(trans_2.Bids) != 0 {
-													money[1] = money[1] - ((money[1] / 100) * fee)
-													money[2] = money[1] * trans_2.Bids[0][0]
 													if len(trans_3.Bids) != 0 {
-														money[2] = money[2] - ((money[2] / 100) * fee)
-														money[3] = money[2] * trans_3.Bids[0][0]
-														if (money[3] - money[0]) > 0 {
-															fmt.Println(curs[0])
-															fmt.Println(curs[1])
-															fmt.Println(curs[2])
-															fmt.Println(curs[0])
-															fmt.Println(money[3] - money[0])
-															fmt.Println("\n")
+														amount[0] = amount[0] - ((amount[0] / 100) * fee[index[0]])
+														if amount[0] >= minAmount[index[0]] {
+															amount[1] = amount[0] / trans_1.Asks[0][0]
+															amount[1] = amount[1] - ((amount[1] / 100) * fee[index[1]])
+															if amount[1] >= minAmount[index[1]] {
+																amount[2] = amount[1] * trans_2.Bids[0][0]
+																amount[2] = amount[2] - ((amount[2] / 100) * fee[index[2]])
+																if amount[2] >= minAmount[index[2]] {
+																	amount[3] = amount[2] * trans_3.Bids[0][0]
+																	if (amount[3] - amount[0]) > 0 {
+																		fmt.Println(curs[0])
+																		fmt.Println(curs[1])
+																		fmt.Println(curs[2])
+																		fmt.Println(curs[0])
+																		fmt.Println(amount[3] - amount[0])
+																		fmt.Println("\n")
+																	}
+																}
+															}
 														}
 													}
 												}
@@ -66,11 +73,14 @@ func main() {
 									}
 								}
 							}
+						index[2] = index[2] + 1
 						}
 					}
 				}
+			index[1] = index[1] + 1
 			}
 		}
+	index[0] = index[0] + 1
 	}
 }
 
@@ -79,9 +89,10 @@ type AB struct {
 	Bids [][]float64 `json:"bids"`
 }
 
-func getPairsArray() []string {
+func getPairsArrays() ([]string, []float64, []float64) {
 	url := "https://yobit.net/api/3/info"
 	i := 0
+	info := make(map[string]interface{})
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Println(err)
@@ -93,20 +104,25 @@ func getPairsArray() []string {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	info := make(map[string]interface{})
 	err = json.Unmarshal(b, &info)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	pairs := info["pairs"].(map[string]interface{})
-	k := make([]string, len(pairs))
-	for s, _ := range pairs {
-		k[i] = s
+	pairsI := info["pairs"].(map[string]interface{})
+	pairs := make([]string, len(pairsI))
+	minAmount := make([]float64, len(pairsI))
+	fee := make([]float64, len(pairsI))
+	for temp, _ := range pairsI {
+		pairs[i] = temp
+		temp_pair := pairsI[temp].(map[string]interface{})
+		minAmount[i] = temp_pair["min_amount"].(float64)
+		fee[i] = temp_pair["fee"].(float64)
 		i++
 	}
-	return k
+	return pairs, minAmount, fee
 }
+
 
 func getActiveOrders(pair string, limit int) (*AB, error) {
 	url := "https://yobit.net/api/3/depth/" + pair + "?limit=" + strconv.FormatInt(int64(limit), 10)
@@ -132,6 +148,7 @@ func getActiveOrders(pair string, limit int) (*AB, error) {
 	b, err := json.Marshal(result)
 	if err != nil {
 		fmt.Println(err)
+		os.Exit(1)
 	}
 	json.Unmarshal(b, &ab)
 	return &ab, err
